@@ -10,7 +10,7 @@ import pre_extraction
 import filtering
 import quality_measure
 #------------------------
-nextrout_path = '../../Nextrout/python_scripts/'#open("./nextrout_path.txt", "r").readline()
+nextrout_path = '/home/dtheuerkauf/Nextrout/python_scripts/'#open("./nextrout_path.txt", "r").readline()
 print(nextrout_path)
 #nextrout_path = '/is/sg2/dtheuerkauf/Nextrout/python_scripts/' #cluster path
 def superimposing_graphs(graph_list, G_aux, union_type = None):
@@ -39,7 +39,7 @@ def superimposing_graphs(graph_list, G_aux, union_type = None):
 		avg_counter=0
 		weight_flag = False # this is used to access either one or two weights when adding the edges
 		for graph in graph_list:
-			try:# if no error, then the edge is in the graph
+			try:# if no error, then the edge *is* in the graph
 				membership_test =graph.edges[edge]
 				try: 
 					w_tdens += graph.edges[edge[0], edge[1]]['tdens']
