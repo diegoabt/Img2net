@@ -2,7 +2,7 @@
 
 Python implementation of the _img2net_ algorithm proposed in:
 
-- [1] Baptista D. & De Bacco C. (2020). *Principled network extraction from images*, <span style="color:blue"> arxiv link.
+- [1] Baptista D. & De Bacco C. (2020). *Principled network extraction from images*, <span style="color:blue">[preprint](https://arxiv.org/abs/2012.12758).
 
 <img src="figures/pre_extracted__angolan_river_crop.png" width="40%" alt="hi" class="inline"/>
 
