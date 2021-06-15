@@ -23,6 +23,8 @@ This repository uses some of the functions proposed on the repository _Nextrout_
 
 - [Nextrout](https://github.com/Danielaleite/Nextrout)
 
+That repository itself needs some dependecies coming from some GitLab repositories, so you will need an [account](https://about.gitlab.com/).
+
 Once _Nextrout_ is cloned, the next step is to install the other python packages found in `requirements.txt`:
 
 ```
