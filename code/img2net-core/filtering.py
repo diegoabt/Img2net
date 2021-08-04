@@ -1,37 +1,83 @@
-import os
-import pickle as pkl
+## import stuff
 import networkx as nx
-import scipy
-from shutil import copyfile
+import numpy as np
+import sys
+import pickle as pkl
+
 from scipy.spatial import ConvexHull, convex_hull_plot_2d
+from scipy.spatial import distance
+
+# Accesing root path
+import os
+
+file_path = os.path.dirname(os.path.realpath(__file__))
+with open("/Users/dtheuerkauf/Nextrout/nextrout_location.txt") as f:
+    lines = f.readlines()
+root = lines[0]
+print('root',root)
+
+# Import I/O for timedata
+try:
+    sys.path.append(root + "/../dmk/globals/python/timedata/")
+    import timedata as td
+except:
+    print("Global repo non found")
+
+# Import geometry tools
+sys.path.append(root + "/../dmk/geometry/python/")
+import meshtools as mt
+
+sys.path.append(root + "/../dmk/dmk_solver/otp_solver/preprocess/assembly/")
+import example_grid
+
+# Import dmk tools
+sys.path.append(root + "/../dmk/dmk_solver/otp_solver/python/")
+import dmk_p1p0
+
+sys.path.append(
+    root + "/../dmk/dmk_solver/build/python/fortran_python_interface/"
+)
+from dmk import (
+    Dmkcontrols,  # controls for dmk simulations)
+    Timefunctionals,  # information of time/algorithm evolution
+    Dmkinputsdata,  # structure variable containg inputs data
+    build_subgrid_rhs,  # procedure to preprocess forcing term f
+    Tdenspotentialsystem,  # input/output result tdens, pot
+    dmkp1p0_steady_data,  # main interface subroutine
+)
+
+# Import plot tools
+import matplotlib.pyplot as plt
+import matplotlib.tri as mtri
 from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
-import matplotlib.pyplot as plt
-import numpy as np
-#----------------------------------------------------------
-import quality_measure
-import source_sink_generator
-import terminal_computation
-import pre_extraction
-import utils
-#---------------------------------------------------------
+
+sys.path.append(root + "/../dmk/dmk_solver/graph_otp_solver/python")
+import dmk_graph
 
 
 def concatenate(lists):
-    '''
+    """
     This concatenates all the lists contained in a list.
     :param lists: a list of lists.
     :return:
         new_list: concatenated list.
-    '''
+    """
     new_list = []
     for i in lists:
         new_list.extend(i)
     return new_list
 
 
-def terminals_from_cont(Graph, source_flag, sink_flag, btns_factor_source, btns_factor_sink, terminal_criterion='branch_convex_hull+btns_centr'):
-    '''
+def terminals_from_cont(
+    Graph,
+    forcing_flag,
+    extra_info,
+    btns_factor_source,
+    btns_factor_sink,
+    terminal_criterion="branch_convex_hull+btns_centr",
+):
+    """
     Computation of source and sink nodes. This script uses information about the inputs of the DMK solver.
     There are three criteria for the selection of the nodes.
     :param Graph: a networkx graph to be filtered.
@@ -46,28 +92,22 @@ def terminals_from_cont(Graph, source_flag, sink_flag, btns_factor_source, btns_
     :return:
         possible_terminals_source: for each i, possible_terminals_source[i]= "sources" of i-th cc.
         possible_terminals_sink: for each i, possible_terminals_sink[i]= "sources" of i-th cc.
-    '''
-
-
-    bn = nx.betweenness_centrality(Graph, normalized=True)
+    """
 
     # Defining source-sink nodes of the graph (nodes inside the source or sink of the continuous DMK)
-    if source_flag == 'rect_cnst':
-        nodes_in_source = [node for node in Graph.nodes() if
-                           source_sink_generator.source_rect_cnst_test(Graph.nodes[node]['pos'][0],
-                                  Graph.nodes[node]['pos'][1])]
-    else:
-        nodes_in_source = [node for node in Graph.nodes() if
-                           source_sink_generator.fsource(Graph.nodes[node]['pos'][0], Graph.nodes[node]['pos'][1],
-                                   source_flag) != 0]
-    if sink_flag == 'rect_cnst':
-        nodes_in_sink = [node for node in Graph.nodes() if
-                         source_sink_generator.sink_rect_cnst_test(Graph.nodes[node]['pos'][0],
-                              Graph.nodes[node]['pos'][1])]
-    else:
-        nodes_in_sink = [node for node in Graph.nodes() if
-                         source_sink_generator.fsink(Graph.nodes[node]['pos'][0], Graph.nodes[node]['pos'][1],
-                               sink_flag) != 0]
+
+    nodes_in_source = []
+    nodes_in_sink = []
+
+    for node in Graph.nodes():
+        terminal_val = Graph.nodes[node]["terminal"]
+        if terminal_val == 1:
+            nodes_in_source.append(node)
+        elif terminal_val == -1:
+            nodes_in_sink.append(node)
+
+    
+    bn = nx.betweenness_centrality(Graph, normalized=True)
 
     # min bn inside the source and sink
 
@@ -76,10 +116,12 @@ def terminals_from_cont(Graph, source_flag, sink_flag, btns_factor_source, btns_
 
     # Defining source-sink candidates based only on btns
 
-    kind_of_leaf_nodes_source = [key for key in nodes_in_source if
-                                 bn[key] <= btns_factor_source * max_bn_source]  # *(min_bn_source)+.0001]
-    kind_of_leaf_nodes_sink = [key for key in nodes_in_sink if
-                               bn[key] <= btns_factor_sink * max_bn_sink]  # *(min_bn_sink+.0001)]
+    kind_of_leaf_nodes_source = [
+        key for key in nodes_in_source if bn[key] <= btns_factor_source * max_bn_source
+    ]  # *(min_bn_source)+.0001]
+    kind_of_leaf_nodes_sink = [
+        key for key in nodes_in_sink if bn[key] <= btns_factor_sink * max_bn_sink
+    ]  # *(min_bn_sink+.0001)]
 
     # Defining the subgraphs induced by the candidates
 
@@ -91,18 +133,67 @@ def terminals_from_cont(Graph, source_flag, sink_flag, btns_factor_source, btns_
     possible_terminals_source = set(kind_of_leaf_nodes_source)
     possible_terminals_sink = set(kind_of_leaf_nodes_sink)
 
+    # print('poss',possible_terminals_source,possible_terminals_sink)
 
-    if terminal_criterion != 'btns_centr':
+    if terminal_criterion == "single":
+
+        terminals = list(possible_terminals_source) + list(possible_terminals_sink)
+
+        # possible_terminals_source = list(possible_terminals_source)
+
+        extra_nodes = []
+
+        for i in range(len(terminals) - 1):  # range(len(possible_terminals_source)-1):
+
+            node1 = terminals[i]
+
+            pos1 = Graph.nodes[node1]["pos"]
+
+            stop = False
+
+            for j in range(i + 1, len(terminals)):
+
+                node2 = terminals[j]
+
+                if node1 != node2 and not stop:
+
+                    pos2 = Graph.nodes[node2]["pos"]
+                    dst = distance.euclidean(pos1, pos2)
+
+                    if dst < 0.1:
+
+                        # check distance
+
+                        if node1 not in extra_nodes:
+
+                            stop = True
+
+                            extra_nodes.append(node1)
+
+        possible_terminals_source = [
+            int(node) for node in possible_terminals_source if node not in extra_nodes
+        ]
+        possible_terminals_sink = [
+            int(node) for node in possible_terminals_sink if node not in extra_nodes
+        ]
+
+    elif terminal_criterion != "btns_centr":
         # Getting the coordinates to compute convex hulls
 
         coordinates_in_source = np.asarray(
-            [[Graph.nodes[node]['pos'][0], Graph.nodes[node]['pos'][1]] for node in
-             nodes_in_source])
+            [
+                [Graph.nodes[node]["pos"][0], Graph.nodes[node]["pos"][1]]
+                for node in nodes_in_source
+            ]
+        )
         coordinates_in_source_list = concatenate(list(coordinates_in_source))
 
         coordinates_in_sink = np.asarray(
-            [[Graph.nodes[node]['pos'][0], Graph.nodes[node]['pos'][1]] for node in
-             nodes_in_sink])
+            [
+                [Graph.nodes[node]["pos"][0], Graph.nodes[node]["pos"][1]]
+                for node in nodes_in_sink
+            ]
+        )
         coordinates_in_sink_list = concatenate(list(coordinates_in_sink))
 
         # If the number of coordinates (or nodes) is not more than 3, then no convex hull computation
@@ -111,67 +202,267 @@ def terminals_from_cont(Graph, source_flag, sink_flag, btns_factor_source, btns_
 
             # Computing convex hull for the branches
 
-            if terminal_criterion == 'branch_convex_hull+btns_centr':
+            if terminal_criterion == "branch_convex_hull+btns_centr":
                 source_hull = ConvexHull(coordinates_in_source)
                 index_source_hull = np.asarray(source_hull.vertices)
                 nodes_source_hull = []
                 coord_source_hull = np.asarray(
-                    [coordinates_in_source[node] for node in index_source_hull])
+                    [coordinates_in_source[node] for node in index_source_hull]
+                )
                 for node in nodes_in_source:
-                    x, y = Graph.nodes[node]['pos']
+                    x, y = Graph.nodes[node]["pos"]
                     if x in coord_source_hull[:, 0] and y in coord_source_hull[:, 1]:
                         nodes_source_hull.append(node)
 
                 sink_hull = ConvexHull(coordinates_in_sink)
                 index_sink_hull = np.asarray(sink_hull.vertices)
                 nodes_sink_hull = []
-                coord_sink_hull = np.asarray([coordinates_in_sink[node] for node in index_sink_hull])
+                coord_sink_hull = np.asarray(
+                    [coordinates_in_sink[node] for node in index_sink_hull]
+                )
                 for node in nodes_in_sink:
-                    x, y = Graph.nodes[node]['pos']
+                    x, y = Graph.nodes[node]["pos"]
                     if x in coord_sink_hull[:, 0] and y in coord_sink_hull[:, 1]:
                         nodes_sink_hull.append(node)
-                possible_terminals_source = set(kind_of_leaf_nodes_source + nodes_source_hull)
+                possible_terminals_source = set(
+                    kind_of_leaf_nodes_source + nodes_source_hull
+                )
                 possible_terminals_sink = set(kind_of_leaf_nodes_sink + nodes_sink_hull)
 
             # Computing convex hull for all the nodes defined as candidates
 
-            elif terminal_criterion == 'whole_convex_hull+btns_centr':  # not working!
+            elif terminal_criterion == "whole_convex_hull+btns_centr":  # not working!
                 single_source_hull = ConvexHull(coordinates_in_source_list)
                 single_index_source_hull = np.asarray(single_source_hull.vertices)
                 nodes_source_hull = []
                 single_coord_source_hull = np.asarray(
-                    [coordinates_in_source_list[node] for node in single_index_source_hull])
+                    [
+                        coordinates_in_source_list[node]
+                        for node in single_index_source_hull
+                    ]
+                )
                 for node in nodes_in_source:
-                    x, y = Graph.nodes[node]['pos']
-                    if x in single_coord_source_hull[:, 0] and y in single_coord_source_hull[:, 1]:
+                    x, y = Graph.nodes[node]["pos"]
+                    if (
+                        x in single_coord_source_hull[:, 0]
+                        and y in single_coord_source_hull[:, 1]
+                    ):
                         nodes_source_hull.append(node)
                 single_sink_hull = ConvexHull(coordinates_in_sink_list)
                 single_index_sink_hull = np.asarray(single_sink_hull.vertices)
                 nodes_sink_hull = []
                 single_coord_sink_hull = np.asarray(
-                    [coordinates_in_sink_list[node] for node in single_index_sink_hull])
+                    [coordinates_in_sink_list[node] for node in single_index_sink_hull]
+                )
                 for node in nodes_in_sink:
-                    x, y = Graph.nodes[node]['pos']
-                    if x in single_coord_sink_hull[:, 0] and y in single_coord_sink_hull[:, 1]:
+                    x, y = Graph.nodes[node]["pos"]
+                    if (
+                        x in single_coord_sink_hull[:, 0]
+                        and y in single_coord_sink_hull[:, 1]
+                    ):
                         nodes_sink_hull.append(node)
-                possible_terminals_source = set(kind_of_leaf_nodes_source + nodes_source_hull)
+                possible_terminals_source = set(
+                    kind_of_leaf_nodes_source + nodes_source_hull
+                )
                 possible_terminals_sink = set(kind_of_leaf_nodes_sink + nodes_sink_hull)
-
 
     return possible_terminals_source, possible_terminals_sink
 
 
+def filtering(
+    Gpe,
+    sources=None,
+    sinks=None,
+    beta_d=1.5,
+    threshold=1e-3,
+    tdens0=None,
+    BPweights="tdens",
+    stopping_threshold_f=1e-3,
+    weight_flag="unit",
+    rhs=None,
+    MaxNumIter = 100,
+    verbose=False,
+):
+
+    inputs = {}
+
+    if sources is None and sinks is None and rhs is None:
+
+        raise ValueError("Either rhs or sources/sinks need to be passed as inputs.")
+
+    ### relabeling
+
+    # todo: add an if for the case in which nodes are already relabeled
+
+    mapping = {}
+    k = -1
+    for node in Gpe.nodes():
+        k += 1
+        mapping[node] = k
+    Gpe_rel = nx.relabel_nodes(Gpe, mapping, copy=True)
+
+    edges = Gpe_rel.edges()
+    nedges = len(edges)
+    nodes = Gpe_rel.nodes()
+    nnodes = len(nodes)
+
+    # tdens0
+
+    if tdens0 != None:
+        try:
+            tdens0 = np.array([(Gpe_rel.edges[edge]["tdens"]) for edge in edges])
+        except:
+            tdens0 = np.array([(Gpe_rel.edges[edge]["flux"]) for edge in edges])
+
+    # topol
+
+    topol = np.zeros((nedges, 2))
+    k = -1
+    for edge in edges:
+        k += 1
+        topol[k, :] = edge
+
+    # weight (uniform)
+
+    weight = np.empty(nedges, dtype=object)
+
+    k = -1
+    for edge in edges:
+        k += 1
+        if weight_flag == "unit":
+            weight[k] = 1
+        elif weight_flag == "length":
+            weight[k] = distance.euclidean(
+                Gpe_rel.nodes[edge[0]]["pos"], Gpe_rel.nodes[edge[1]]["pos"]
+            )
+        else:
+            weight[k] = Gpe_rel.edges[edge][weight_flag]
+
+    # rhs (f+ and f-)
+
+    if (
+        sinks is not None and sources is not None
+    ):  # there are lists from the sources and sinks are going to be chosen.
+        # (else) if this is not pass, then the rhs is passed.
+
+        rhs = np.zeros(nnodes)
+        sources_rel = [mapping[node] for node in sources]
+        sinks_rel = [mapping[node] for node in sinks]
+
+        number_sources = len(sources_rel)
+        number_sinks = len(sinks_rel)
+
+        for node in nodes:
+            if node in sources_rel:
+                rhs[node] = 1 / number_sources
+            elif node in sinks_rel:
+                rhs[node] = -1 / number_sinks
+            else:
+                rhs[node] = 0
+    else:
+        sources_rel = [i for i in range(len(rhs)) if rhs[i] > 0]
+        sinks_rel = [i for i in range(len(rhs)) if rhs[i] < 0]
+
+    
+    assert sum(rhs) < 0.01
+    assert len(rhs) == nnodes
+    # init and set controls
+    ctrl = Dmkcontrols.DmkCtrl()
+    Dmkcontrols.get_from_file(ctrl, root + "/nextrout_core/dmk_discr.ctrl")
+    # if and where save data
+    ctrl.id_save_dat = 1
+    ctrl.fn_tdens = "tdens.dat"
+    ctrl.fn_pot = "pot.dat"
+    ctrl.max_time_iterations = MaxNumIter
+    # if and where save log
+    ctrl.id_save_statistics = 1
+    ctrl.fn_statistics = "dmk.log"
+    # if print info
+    #
+    if verbose:
+        ctrl.info_state = 3
+        ctrl.info_update = 3
+        print(ctrl.outer_solver_approach)
+    else:
+        ctrl.info_state = 0
+        ctrl.info_update = 0
+
+    [info, tdens, pot, flux, timefun] = dmk_graph.dmk_graph(
+        topol,
+        rhs,
+        pflux=beta_d,
+        tdens0=tdens0,
+        tolerance = stopping_threshold_f,
+        weight=weight,
+        ctrl=ctrl,
+    )
+
+    tdens = list(tdens)
+    flux = list(flux)
+
+    if (info == 0) and verbose:
+        print("Convergence achieved")
+
+    max_flux = max(flux)
+    max_tdens = max(tdens)
+    Gf = nx.Graph()
+    ed_count = -1
+    weights_in_Gf = []
+    for edge in Gpe_rel.edges():
+        ed_count += 1
+        if BPweights == "flux":
+            if abs(flux[ed_count]) > max_flux * threshold:
+                Gf.add_edge(*edge, flux=flux[ed_count])
+                weights_in_Gf.append(flux[ed_count])
+
+        elif BPweights == "tdens":
+            if abs(tdens[ed_count]) > max_tdens * threshold:
+                Gf.add_edge(*edge, tdens=tdens[ed_count])
+                weights_in_Gf.append(tdens[ed_count])
+
+        else:
+            raise ValueError("BPweights flag not defined!.")
+        try:
+            Gf.add_node(
+                edge[0], weight=Gpe_rel.nodes[edge[0]]["tdens"]
+            )  # todo: this needs to be fixed once the flux is working again (BPweights)
+            Gf.add_node(edge[1], weight=Gpe_rel.nodes[edge[1]]["tdens"])
+        except:
+            pass
+
+    Gf.remove_nodes_from(list(nx.isolates(Gf)))
+
+    weights_in_Gf = np.array(weights_in_Gf)
+    colors = []
+
+    for node in Gf.nodes():
+
+        Gf.nodes[node]["pos"] = Gpe_rel.nodes[node]["pos"]
+
+        if node in sources_rel:
+            colors.append("g")
+        elif node in sinks_rel:
+            colors.append("r")
+        else:
+            colors.append("k")
+
+    inputs["topol"] = topol
+    inputs["rhs"] = rhs
+    inputs["pflux"] = beta_d
+    inputs["tdens0"] = tdens0
+
+    return Gf, weights_in_Gf, colors, inputs
 
 
-def bifurcation_paths(G, terminals=[], weights_list = ['weight']):
-    '''
+def bifurcation_paths(G, terminals):
+    """
     This script takes a filtered graph and reduces its paths (sequences of nodes with degree 2) to a single edge.
 
     :param G:  filtered graph (networkx graph).
     :param terminals: union of source and sink nodes.
     :return:
         G: reduced graph.
-    '''
+    """
 
     G = G.copy()
     N = len(G.nodes())
@@ -179,136 +470,37 @@ def bifurcation_paths(G, terminals=[], weights_list = ['weight']):
     deg = {}
     for key in deg_norm.keys():
         deg[key] = int(round((N - 1) * deg_norm[key]))
-    deg_3 = [node for node in G.nodes() if deg[node] >= 3 or deg[node] == 1 or node in terminals]
+    # print(deg)
+    # deg_neq_2=[node for node in G.nodes() if deg[node]!= 2]
+    deg_3 = [
+        node
+        for node in G.nodes()
+        if deg[node] >= 3 or deg[node] == 1 or node in terminals
+    ]
 
     G_wo_bifuc = G.copy()
     for node in deg_3:
         G_wo_bifuc.remove_node(node)
     cc = list(nx.connected_components(G_wo_bifuc))
-
-
+    # print(list(cc))
+    connect_points = {}
+    index = 1
     for comp in cc:
         comp = set(comp)
-        neighs = {neigh for node in comp for neigh in G.neighbors(node) if neigh not in comp}
-        assert len(neighs) <= 2
-        # adding the weights
-        nodes = list(neighs)+list(comp)
-        
-        
-        subgraph = G.subgraph(nodes)
-        
-        subgraph = subgraph.copy()
-        
+        neighs = {
+            neigh for node in comp for neigh in G.neighbors(node) if neigh not in comp
+        }
+        # print(neighs)
+        assert len(neighs) == 2
         G.remove_nodes_from(comp)
-        
-        #print('sg',subgraph.edges(data=True))
-        '''
-        if len(neighs) == 1:
-            v = list(neighs)[0]
-            neighs = (v,v)
-
-        G.remove_nodes_from(comp)
-
-        if len(neighs) == 2: 
-            neighs = tuple(neighs)
-            G.add_edge(neighs[0],neighs[1])
-        '''
-        for weight in weights_list:
-            #print(weight)
-            #print('sg',subgraph.edges())
-            w = 0
-            l=0
-
-            for edge in subgraph.edges:
-                #print(edge,subgraph.edges[edge])
-
-                w+=subgraph.edges[edge][weight]
-                w1 = edge[0]
-                w2 = edge[1]
-                p1 = subgraph.nodes[w1]['pos']
-                p2 = subgraph.nodes[w2]['pos']
-                l+=scipy.spatial.distance.euclidean(p1, p2)
-            
-            neighs = tuple(neighs)
-            
-            if len(neighs) == 1:
-                v = neighs[0]
-                neighs = (v,v)
-
-            
-
-            if neighs not in G.edges():
-                G.add_edge(neighs[0],neighs[1])
-            
-            G.edges[neighs]['length'] = l
-
-            if 'weight' == weight:
-                G.edges[neighs]['weight'] = w
-            elif 'flux' == weight:
-                G.edges[neighs]['flux'] = w
-            elif 'tdens' == weight:
-                G.edges[neighs]['tdens'] = w
-            elif 'time' == weight:
-                G.edges[neighs]['time'] = w
-            #print(weight,'===',w)
+        G.add_edge(*tuple(neighs))
 
     return G
 
 
-def BP_solver(folder_name, index):
-    '''
-    This script executes the BP_solver (a muffe_sparse_opt/dmk_folder.py sequence)
-    :param folder_name: folder path where the outputs will be stored. It should be written "./runs/folder_name".
-    :param index: integer representing the connected component to which this algorithm is going to be applied.
-    :return:
-    '''
-
-    # Generating the output folders
-    try:
-        os.mkdir('../otp_utilities/muffe_sparse_optimization/simplifications/' + folder_name + "/component" + str(
-            index) + '/')
-    except OSError:
-        pass
-        #print("Creation of the directory %s failed." % (folder_name + "/component" + str(index) + '/'))
 
 
-    for folder in ["output", "output/result", "output/vtk", "output/linear_sys", "output/timefun"]:
-        try:
-            os.mkdir('../otp_utilities/muffe_sparse_optimization/simplifications/' + folder_name + "/component" + str(
-                index) + '/' + folder)
-        except OSError:
-            pass
-            #print("Creation of the directory %s failed." % (folder_name + "/component" + str(index) + '/' + folder))
-    os.system(
-        'cp ../otp_utilities/muffe_sparse_optimization/simplifications/muffa.fnames  ' + '../otp_utilities/muffe_sparse_optimization/simplifications/' + folder_name + "/component" + str(
-            index) + '/')
-
-    # Copying the par_files
-    for file in ['decay', 'pflux', 'pmass']:
-        os.system(
-            'cp  ../otp_utilities/muffe_sparse_optimization/simplifications/par_files/' + file + '.dat ' + '../otp_utilities/muffe_sparse_optimization/simplifications/' + folder_name + "/component" + str(
-                index) + '/input')
-
-    # Executing the dmk_folder.py run
-    continuous_path = os.path.abspath("./")
-    #print('path in BP_solver', os.getcwd(), continuous_path)
-    discrete_path = "../otp_utilities/muffe_sparse_optimization/simplifications/"
-
-
-    os.chdir(discrete_path)
-    #print('discrete', os.getcwd())
-    command = "./dmk_folder.py run  " + folder_name[2:] + "/component" + str(
-        index) + "  " + " muffa.ctrl  > outputs_dmk_d.txt"
-
-    #print(command)
-    os.system(command)
-    os.chdir(continuous_path)
-
-
-
-
-
-def filtering_from_image(small_G_filtered, beta_d, terminals, color_dict, partition_dict, weighting_method_simplification='ER',entries=[0],folder_name='./runs/no_name/',plotting=True):
+def filtering_from_image(small_G_filtered, sources, sinks, beta_d,  color_dict, partition_dict, weighting_method_simplification='ER',folder_name='./runs/no_name/',plotting=True):
     '''
     This takes as input a pre-extracted graph (obtained from an image) and filters it using filtering().
     :param small_G_filtered: pre-extracted graph.
@@ -327,7 +519,6 @@ def filtering_from_image(small_G_filtered, beta_d, terminals, color_dict, partit
     Graph = small_G_filtered.copy()
     BP_weights = 'BPtdens'
     min_ = .0001
-    terminal_info =[terminals, entries]
     weight_flag='length'
     input_flag = 'image'
 
@@ -346,16 +537,16 @@ def filtering_from_image(small_G_filtered, beta_d, terminals, color_dict, partit
     except:
         pass
 
-
-    G_filtered, newGraph, ncc, possible_terminals_source, possible_terminals_sink, mapping, conv_report = filtering(Graph,
-              beta_d,
-                min_,
-                folder_name+"/",
-                terminal_info,
-                weighting_method_simplification,
-                BP_weights,
-                weight_flag,
-                input_flag)
+    G_filtered,_,_,_ = filtering(
+                            Graph,
+                            sources=sources,
+                            sinks=sinks,
+                            beta_d = beta_d,
+                            threshold = min_,
+                            BPweights="tdens",
+                            stopping_threshold_f=1e-5,
+                            weight_flag="length"
+                        )
 
     #print('filtering_from_image',G_filtered.edges(data=True))
     # Plotting
@@ -402,11 +593,13 @@ def filtering_from_image(small_G_filtered, beta_d, terminals, color_dict, partit
         nx.draw_networkx(G_filtered, pos, node_size=5, width=3, with_labels=False, edge_color='black', alpha=1,
                          node_color='black', ax=ax)
 
-        for node in terminals:
-            if terminals.index(node) in entries:
+        for node in small_G_filtered.nodes():
+            if node in sources:
                 color = 'green'
-            else:
+            elif node in sinks:
                 color = 'red'
+            else:
+                color = 'black'
             x = small_G_filtered.nodes[node]['pos'][0]
             y = small_G_filtered.nodes[node]['pos'][1]
             circle1 = plt.Circle((x, y), .015, color=color, fill=False, lw=4)
@@ -430,11 +623,13 @@ def filtering_from_image(small_G_filtered, beta_d, terminals, color_dict, partit
         nx.draw_networkx(G_filtered, pos, node_size=5, width=3, with_labels=False, edge_color='black', alpha=1,
                          node_color='black', ax=ax)
 
-        for node in terminals:
-            if terminals.index(node) in entries:
+        for node in small_G_filtered.nodes():
+            if node in sources:
                 color = 'green'
-            else:
+            elif node in sinks:
                 color = 'red'
+            else:
+                color = 'black'
             x = small_G_filtered.nodes[node]['pos'][0]
             y = small_G_filtered.nodes[node]['pos'][1]
             circle1 = plt.Circle((x, y), .015, color=color, fill=False, lw=4)
@@ -446,7 +641,7 @@ def filtering_from_image(small_G_filtered, beta_d, terminals, color_dict, partit
         pkl.dump(G_filtered, file)
     plt.close('all')
 
-    return G_filtered, conv_report
+    return G_filtered
 
 
 
@@ -708,192 +903,6 @@ def edge_correction_v2(G_bfs, G_pre_extracted, gbfs_threshold, gpe_threshold):
     return edges, source_target_pair
 
 
-def filtering(Graph,
-              beta_d,
-              min_,
-            folder_name,
-            terminal_info,
-            weighting_method_simplification='ER',
-            BP_weights='BPtdens',
-            weight_flag='length',
-              input_flag = None):
-    '''
-
-    :param Graph: a networkx graph to be filtered.
-    :param beta_d: beta input for the DMK solver.
-    :param min_: threshold for the weights of the edges after filtering.
-    :param folder_name: folder path where the outputs will be stored. It should be written "./runs/folder_name".
-    :param terminal_info: for dat files (i.e. from continuous): [
-            source_flag,
-              sink_flag,
-              btns_factor_source,
-                btns_factor_sink].
-                for images:
-    terminal_info = [
-            terminals,
-            entries]
-    :param weighting_method_simplification: 'ER', 'IBP', 'BPW'.
-    :param BP_weights: 'BPtdens' to use optimal transport density as weights for edges, 'BPflux' to use optimal flux.
-    :param weight_flag: 'length', to use the length of the edges; else, to use unit length edges.
-    :param input_flag: 'image' or None (for dat files)
-    :return:
-        G_filtered: filtered graph (networkx graph).
-        newGraph: dictionary, s.t., newGraph[i]= i-th cc (labeled from 0 to len(cc)-1).
-        ncc: number of connected components of Graph.
-        possible_terminals_source: for each i, possible_terminals_source[i]= "sources" of i-th cc.
-        possible_terminals_sink: for each i, possible_terminals_sink[i]= "sources" of i-th cc.
-        mapping: for each i, mapping[i]: labels of i-th cc -------------> labels of Graph.
-    '''
-    # ------------------------------------------------ filtering -------------------------------------------
-    # Init dicts
-    if len(terminal_info) == 2:# this is for image processing
-        terminals = terminal_info[0]
-        entries = terminal_info[1]
-    elif len(terminal_info)==4:
-        source_flag= terminal_info[0]
-        sink_flag = terminal_info[1]
-        btns_factor_source= terminal_info[2]
-        btns_factor_sink= terminal_info[3]
-    else:
-        print('invalid terminal_info input!')
-
-    conv_report = {}
-    newGraph = {}
-    mapping = {}
-    inv_mapping = {}
-    possible_terminals_source = {}
-    possible_terminals_sink = {}
-    edge_mapping = {}
-    G_simplification = {}
-
-    # Copy of Graph
-
-    G = Graph.copy()
-
-    #defining the beta_d for the simulations
-
-    utils.updating_beta_discrete(beta_d)
-
-    # Generating the cc-based graphs and the corresponding mappings
-    newGraphList, mappingList, inv_mappingList,_ = utils.pickle2pygraph(G)
-
-    # Iterating over the subgraphs
-    ncc = len(newGraphList)
-    for i in range(1, ncc + 1):
-
-        conv_report[i]=[]
-        newGraph[i] = newGraphList[i - 1]
-        mapping[i] = mappingList[i - 1]
-        inv_mapping[i] = inv_mappingList[i - 1]
-        # ------------------------------------  filtering: this is done in a different way for images -----------------
-        if len(terminal_info) == 2:
-            source_candidates = [terminals[entry] for entry in entries]
-            possible_terminals_source[i] = [inv_mapping[i][node] for node in source_candidates]
-            possible_terminals_sink[i] = [inv_mapping[i][node] for node in terminals if node not in source_candidates]
-
-        else:
-
-            possible_terminals_source[i], possible_terminals_sink[i] = terminals_from_cont(newGraph[i], source_flag,
-                                                                                       sink_flag,
-                                                                                       btns_factor_source,
-                                                                                       btns_factor_sink)
-
-        edge_mapping[i] = utils.pygraph2dat(newGraph[i], possible_terminals_source[i], possible_terminals_sink[i], i,
-                                      folder_name, mapping[i], input_flag)
-
-
-        #print('executing graph2incidence_matrix for the component %s' % i)
-        utils.using_graph2incidence_matrix(folder_name, i, weight_flag)
-        print('_____________________________EXECUTING BP solver___________________________________________')
-        BP_solver(folder_name, i)
-        data_folder_name = folder_name + '/component' + str(i)
-        G_simplification[i] = utils.dat2pygraph(newGraph[i], data_folder_name, edge_mapping[i],
-                                              min_, BP_weights)
-
-        # Checking convergence
-
-        conver_bool = utils.convergence_tester( "../otp_utilities/muffe_sparse_optimization/simplifications/"+folder_name + '/component' + str(i))
-
-        conv_report[i].append('|last_var_tdens|>1E-20:'+str(conver_bool))
-
-        # Defining terminal labels for sources and sinks
-
-        for node in G_simplification[i].nodes():
-            node_in_original, _,_ = quality_measure.old_label(node, newGraph[i], G_simplification[i])
-            if node_in_original in possible_terminals_source[i]:
-                ss_label = 1
-            elif node_in_original in possible_terminals_sink[i]:
-                ss_label = -1
-            else:
-                ss_label = 0
-            G_simplification[i].nodes[node]['terminal'] = ss_label
-
-        isolated_nodes = len([node for node in G_simplification[i].nodes() if G_simplification[i].degree(node)==0])
-
-        node_test = len(newGraph[i].nodes) - (len(G_simplification[i].nodes) - isolated_nodes)
-        conv_report[i].append('|V(G)-V(G_f)|= '+ str(node_test))
-
-        edge_test = len(newGraph[i].edges) - len(G_simplification[i].edges)
-        conv_report[i].append(('|E(G)-E(G_f)|= '+ str(edge_test)))
-
-        ccomp_test = len(list(nx.connected_components(G_simplification[i])))-isolated_nodes
-        conv_report[i].append('|cc(G_f)| = '+ str(ccomp_test))
-
-        test1 = conver_bool == True
-        test2 =  node_test > 0
-        test3 = edge_test > 0
-        test4 = ccomp_test == 1 #fix this
-
-        test_val = [test1,test2,test3,test4]
-
-        conv_report[i]= ['success rate (%)= '+ str(int((sum(test_val)/4)*100))] + conv_report[i]+test_val
-    # Assigning opt_pot to the nodes
-
-    # Joining all the simplifications into a single graph
-
-    #G = newGraphList[0]
-    G_filtered = G_simplification[1]
-    for i in range(1, ncc):
-        #G = nx.disjoint_union(G, newGraphList[i])
-        G_filtered = nx.disjoint_union(G_filtered, G_simplification[i + 1])
-
-    # Adding the terminals (to track disconnectivities) (to do this we need to comment the nex line. But it's not working yet)
-
-    G_filtered.remove_nodes_from(
-        [x for x in G_filtered.nodes() if G_filtered.degree(x) == 0])
-
-
-    # Reweighting the edges
-
-    deg = nx.degree_centrality(G_filtered)
-    posGsimpl = nx.get_node_attributes(G_filtered, 'pos')
-
-    if weighting_method_simplification == 'ER':
-        N = len(G_filtered.nodes())
-        for edge in G_filtered.edges():
-            if deg[edge[0]] * deg[edge[1]] != 0:
-                G_filtered.edges[(edge[0], edge[1])]['tdens'] = G_filtered.nodes[edge[0]][
-                                                                                 'weight'] / (
-                                                                                     deg[edge[0]] * (N - 1)) + \
-                                                                             G_filtered.nodes[edge[1]][
-                                                                                 'weight'] / (
-                                                                                     deg[edge[1]] * (N - 1))
-                
-
-    elif weighting_method_simplification == 'IBP':
-        print('relabel/reweig!')
-        G_filtered_relabeled = relabeling(G_filtered, G)
-        G_filtered = reweighting(G_filtered_relabeled, G)
-        # posGsimpl = nx.get_node_attributes(G_filtered, 'pos')
-    elif weighting_method_simplification == 'BPW':
-        print('BPW used!')
-        pass
-
-    print('number of edges after reweighting:',len(G_filtered.edges()))
-
-    return G_filtered, newGraph, ncc, possible_terminals_source, possible_terminals_sink, mapping, conv_report
-
-    # ------------ end of filtering -----------------------------------------
 
 
 def img2filtering(image_path, new_size, number_of_colors, t1, t2, number_of_cc, graph_type, beta_d,weighting_method_simplification='ER',entries=[0]):

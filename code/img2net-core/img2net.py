@@ -43,7 +43,7 @@ def superimposing_graphs(graph_list, G_aux, union_type = None):
 				membership_test =graph.edges[edge]
 				try: 
 					w_tdens += graph.edges[edge[0], edge[1]]['tdens']
-					w_flux += graph.edges[edge[0], edge[1]]['flux']
+					
 					avg_counter+=1
 				except:
 					w_tdens+= graph.edges[edge[0], edge[1]]['weight']
@@ -55,7 +55,7 @@ def superimposing_graphs(graph_list, G_aux, union_type = None):
 			unionG.edges[edge[0], edge[1]]['weight'] = w_tdens/avg_counter
 		else:	
 			unionG.edges[edge[0], edge[1]]['tdens'] = w_tdens/avg_counter
-			unionG.edges[edge[0], edge[1]]['flux'] = w_flux/avg_counter
+			
 		unionG.edges[edge[0], edge[1]]['length'] = distance.euclidean(
 			G_aux.nodes[edge[0]]['pos'], G_aux.nodes[edge[1]]['pos'])
 
@@ -132,18 +132,18 @@ def image2net(image_path, N_runs, t2, t3, new_size = 'automatic',union_type = No
 
 		terminal_list = list(G_pre_extracted.nodes())
 
-		current_path = os.getcwd()
-		os.chdir(nextrout_path)
+		#current_path = os.getcwd()
+		#os.chdir(nextrout_path)
 
 		print('step 2: computing Gtree.')
 
-		G_tree, _ = filtering.filtering_from_image(G_pre_extracted,
-													   beta_d,
-													   terminal_list,
-													   color_dict,
-													   partition_dict,
+		G_tree = filtering.filtering_from_image(G_pre_extracted,
+			                                           sources= terminal_list[0:1],
+			                                           sinks = terminal_list[1:],
+													   beta_d = beta_d,
+													   color_dict = color_dict,
+													   partition_dict = partition_dict,
 													   weighting_method_simplification=weighting_method_simplification,
-													   entries=[0], 
 													   folder_name = folder_path)
 
 		
@@ -189,31 +189,29 @@ def image2net(image_path, N_runs, t2, t3, new_size = 'automatic',union_type = No
 			random_source = rng.choice(terminal_list)
 			print('chosen source:',random_source)
 			rs_index = terminal_list.index(random_source)
-			
-			#executing the filtration
-			G_filtered, conv_report = filtering.filtering_from_image(G_pre_extracted,
-														   beta_d,
-														   terminal_list,
-														   color_dict,
-														   partition_dict,
-														   weighting_method_simplification=weighting_method_simplification,
-														   entries=[rs_index])
 
-			print('report', conv_report)
-			sr = conv_report[1][0].split('=')[1]
-			print('sr',sr)
-			if sr == ' 100':
-			  print('success!')
-			  G_filtered = quality_measure.relabeling(G_filtered, G_pre_extracted)
-			  Gf[i] = G_filtered
-			  sources[i]=random_source
-			  i+=1
-			else:
-			  print('Simulation did not converge. Repeating it!')
+			sources_rs = [terminal_list[entry] for entry in [rs_index]]
+			sinks_rs = [node for node in terminal_list if node not in sources_rs]
+			G_filtered = filtering.filtering_from_image(G_pre_extracted,
+			                                           sources= sources_rs,
+			                                           sinks = sinks_rs,
+													   beta_d = beta_d,
+													   color_dict = color_dict,
+													   partition_dict = partition_dict,
+													   weighting_method_simplification=weighting_method_simplification,
+													   folder_name = folder_path)
+
+
+			
+			G_filtered = quality_measure.relabeling(G_filtered, G_pre_extracted)
+			print('     is Gtree a tree?', str(nx.is_tree(G_filtered)))
+			Gf[i] = G_filtered
+			sources[i]=random_source
+			i+=1
 			max_+=1
 
 
-		os.chdir(current_path)
+		#os.chdir(current_path)
 
 		pre_extraction.plt_graph_plots([G_tree],
 										   partition_dict,
@@ -252,7 +250,7 @@ def image2net(image_path, N_runs, t2, t3, new_size = 'automatic',union_type = No
 
 		#adding value property
 
-		G_filtered = time_weights(G_filtered, beta_d)
+		#G_filtered = time_weights(G_filtered, beta_d)
 
 		weights = [G_filtered.edges[edge]['tdens'] for edge in G_filtered.edges()]
 

@@ -100,7 +100,8 @@ def relabeling(G_new,G_old):
         else:    
             G_new_relabeled.add_edge(label1,label2, 
                 tdens=G_new.edges[edge[0],edge[1]]['tdens'],
-                flux=G_new.edges[edge[0],edge[1]]['flux'])
+                #flux=G_new.edges[edge[0],edge[1]]['flux']
+                )
         G_new_relabeled.nodes[label1]['pos']=p1
         G_new_relabeled.nodes[label2]['pos']=p2
         G_new_relabeled.nodes[label1]['weight']= w1

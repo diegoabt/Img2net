@@ -285,8 +285,8 @@ def connecting_edges(G_bar, node, min_, graph_type, dict_seq, max_, weighting_me
 
 def grid_filter(G_bar, G_triang, min_, dict_seq):
 	'''
-    This script adds the edges of a triangle to the graph type 3 if the weight of its barycenter is greater than the
-    threshold (min_) x max_.
+	This script adds the edges of a triangle to the graph type 3 if the weight of its barycenter is greater than the
+	threshold (min_) x max_.
 	:param G_bar: a weighted networkX graph whose nodes are the barycenters of the elements of the grid. No edges.
 	:param G_triang: the grid graph.
 	:param min_: threshold for the weights of the edges after pre-extraction.
@@ -366,9 +366,11 @@ def node_edge_filter(G_bar, min_, graph_type, dict_seq, weighting_method,input_f
 	"""
 	nodes_dict = G_bar.nodes(data='weight')
 	max_ = max([entry[1] for entry in nodes_dict])
+	reduced_node_list = [int(node) for node in G_bar.nodes() if G_bar.nodes[node]['weight']>min_ * max_]
 
+	print('Barycenters whose weight is over the threshold:',len(reduced_node_list))
 	# Iterate over all the numbers (<--> nodes) to test the condition about the threshold:
-	for n in range(len(G_bar.nodes())):
+	for n in reduced_node_list:#range(len(G_bar.nodes()))
 		connecting_edges(
 			G_bar, n + 1, min_, graph_type, dict_seq, max_, weighting_method,input_flag,node2box_index, t3 = t3
 		)
@@ -501,7 +503,7 @@ def bar_square(coord):
 	return x_bar,y_bar
 
 
-def resizing_image(image_path, number_of_colors, new_size,t=0,reversed_colors = True, ds_interpolation = 'nearest'):
+def resizing_image(image_path, number_of_colors, new_size,t=0,reversed_colors = True, ds_interpolation = 'nearest', plotting = True):
 	'''
 	This resizes and repaints an image.
 	:param image_path: string.
@@ -534,10 +536,6 @@ def resizing_image(image_path, number_of_colors, new_size,t=0,reversed_colors = 
 
 	if new_size == 'automatic':
 		new_size = max( int(0.30*width) , 100)
-
-
-	#print('original dimensions',im.shape)
-	#print('the width',width,' and the new size',new_size)
 
 	if width != new_size:
 		#resizing it
@@ -590,23 +588,26 @@ def resizing_image(image_path, number_of_colors, new_size,t=0,reversed_colors = 
 
 	max_ = max(color_dict.values())
 
-	fig, ax = plt.subplots(1, 1, figsize=(17, 15))
-	patches = []
-	for key in partition_dict:
-		square_edges = np.asarray([partition_dict[key][0]] + [partition_dict[key][2]] + [partition_dict[key][3]] + [
-			partition_dict[key][1]] + [partition_dict[key][0]])
 
-		s1 = Polygon(square_edges)
-		patches.append(s1)
-	p = PatchCollection(patches, alpha=1, linewidth=.0, edgecolor='b', cmap='Greys')
+	if plotting:
 
-	p.set_array(np.array(colors))
-	ax.add_collection(p)
-	plt.colorbar(p)
-	folder_path = image_path.replace(image_path.split('/')[-1],"")
+		fig, ax = plt.subplots(1, 1, figsize=(17, 15))
+		patches = []
+		for key in partition_dict:
+			square_edges = np.asarray([partition_dict[key][0]] + [partition_dict[key][2]] + [partition_dict[key][3]] + [
+				partition_dict[key][1]] + [partition_dict[key][0]])
 
-	plt.savefig(saving_path+'/repainted_resized_image.png')
-	#plt.show()
+			s1 = Polygon(square_edges)
+			patches.append(s1)
+		p = PatchCollection(patches, alpha=1, linewidth=.0, edgecolor='b', cmap='Greys')
+
+		p.set_array(np.array(colors))
+		ax.add_collection(p)
+		plt.colorbar(p)
+		folder_path = image_path.replace(image_path.split('/')[-1],"")
+
+		plt.savefig(saving_path+'/repainted_resized_image.png')
+		#plt.show()
 
 	return width,color_dict,saving_path
 
@@ -630,7 +631,7 @@ def weighted_partition2bar_graph(partition_dict, color_dict):
 
 
 
-def pre_extraction_from_image(image_path,new_size,t2,number_of_colors=50,number_of_cc=1,graph_type='1',t1=0, reversed_colors = True, t3 = 1, ds_interpolation= 'nearest'):
+def pre_extraction_from_image(image_path,new_size,t2,number_of_colors=50,number_of_cc=1,graph_type='1',t1=0, reversed_colors = True, t3 = 1, ds_interpolation= 'nearest', plotting = False):
 	'''
 	This takes an image and return a graph extracted from it according to the pre-extraction rules.
 	:param image_path: string.
@@ -663,29 +664,30 @@ def pre_extraction_from_image(image_path,new_size,t2,number_of_colors=50,number_
 
 	G_pre_extracted = node_edge_filter(G_pre_extracted, t2, graph_type, dict_seq, 'ER','image',node2box_index, t3=t3)  # 12
 
-	fig, ax = plt.subplots(1, 1, figsize=(15, 15))
-	patches = []
-	for key in partition_dict:
-		square_edges = np.asarray([partition_dict[key][0]] + [partition_dict[key][2]] + [partition_dict[key][3]] + [
-			partition_dict[key][1]] + [partition_dict[key][0]])
-
-		s1 = Polygon(square_edges)
-		patches.append(s1)
-	p = PatchCollection(patches, alpha=.7, cmap='YlOrRd', linewidth=.1, edgecolor='b')
-
-	colors = np.array(list(color_dict.values()))
-	p.set_array(colors)
-	ax.add_collection(p)
-
-
 	small_G_pre_extracted = G_pre_extracted.copy()
 	small_G_pre_extracted.remove_nodes_from(list(nx.isolates(G_pre_extracted)))
-
 	pos = nx.get_node_attributes(small_G_pre_extracted, 'pos')
-	nx.draw_networkx(small_G_pre_extracted, pos, node_size=1, width=3, with_labels=False, edge_color='Gray', alpha=0.8,
-					 node_color='black', ax=ax)
 
-	if number_of_cc in [1,None]: #we assume then there's just one
+	if plotting:
+
+		fig, ax = plt.subplots(1, 1, figsize=(15, 15))
+		patches = []
+		for key in partition_dict:
+			square_edges = np.asarray([partition_dict[key][0]] + [partition_dict[key][2]] + [partition_dict[key][3]] + [
+				partition_dict[key][1]] + [partition_dict[key][0]])
+
+			s1 = Polygon(square_edges)
+			patches.append(s1)
+		p = PatchCollection(patches, alpha=.7, cmap='YlOrRd', linewidth=.1, edgecolor='b')
+
+		colors = np.array(list(color_dict.values()))
+		p.set_array(colors)
+		ax.add_collection(p)
+		
+		nx.draw_networkx(small_G_pre_extracted, pos, node_size=1, width=3, with_labels=False, edge_color='Gray', alpha=0.8,
+						 node_color='black', ax=ax)
+
+	if number_of_cc in [1,None] and plotting: #we assume then there's just one
 
 		plt.savefig(folder_path + '/extracted_graph.png')
 
@@ -705,7 +707,7 @@ def pre_extraction_from_image(image_path,new_size,t2,number_of_colors=50,number_
 	with open(folder_path+'/G_bar.pkl', 'wb') as file:
 		pkl.dump(G_bar, file)
 
-	plt.savefig(folder_path + '/extracted_graph.png')
+	
 	return small_G_pre_extracted, color_dict, partition_dict, folder_path
 
 
