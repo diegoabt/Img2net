@@ -74,7 +74,7 @@ def time_weights(G, beta_d):
 
 	return G
 
-def image2net(image_path, N_runs, t2, t3, new_size = 'automatic',union_type = None, reversed_colors = True, noise_on=True, ds_interpolation = 'nearest', weighting_method_simplification = 'BPW', rseed = None):
+def image2net(image_path, N_runs, t2, t3, new_size = 'automatic',union_type = None, reversed_colors = True, noise_on=True, ds_interpolation = 'nearest', weighting_method_simplification = 'BPW', rseed = None, only_Gpe = True, plotting = True):
 
 	max_tol=5
 	
@@ -112,6 +112,11 @@ def image2net(image_path, N_runs, t2, t3, new_size = 'automatic',union_type = No
 																											reversed_colors, t3,
 																											ds_interpolation)
 		
+		# removing disconnected parts
+		
+		cc_large = max(nx.connected_components(G_pre_extracted), key=len)
+		G_pre_extracted = G_pre_extracted.subgraph(cc_large)
+
 		print('connected',nx.is_connected(G_pre_extracted))
 
 		# G_pre_extracted = filtering.bifurcation_paths(G,[])
@@ -125,169 +130,180 @@ def image2net(image_path, N_runs, t2, t3, new_size = 'automatic',union_type = No
 		
 		print('graph stored at:'+folder_path)
 
-		## STEP 2: tree approximation
+		G_filtered = G_pre_extracted.copy()
 
-		#parameters:
-		beta_d = 1.5
+		if plotting: pre_extraction.plt_graph_plots([G_pre_extracted],
+											   partition_dict,
+											   color_dict,
+											   folder_path,
+											   '/G_pre_extracted.png',
+											   alpha=.6,
+											   width_list=[3],
+											   color_list=['black'])
 
-		terminal_list = list(G_pre_extracted.nodes())
+		if not only_Gpe:
 
-		#current_path = os.getcwd()
-		#os.chdir(nextrout_path)
+			## STEP 2: tree approximation
 
-		print('step 2: computing Gtree.')
+			#parameters:
+			beta_d = 1.5
 
-		G_tree = filtering.filtering_from_image(G_pre_extracted,
-			                                           sources= terminal_list[0:1],
-			                                           sinks = terminal_list[1:],
-													   beta_d = beta_d,
-													   color_dict = color_dict,
-													   partition_dict = partition_dict,
-													   weighting_method_simplification=weighting_method_simplification,
-													   folder_name = folder_path)
+			terminal_list = list(G_pre_extracted.nodes())
 
-		
-		print('     is Gtree a tree?', str(nx.is_tree(G_tree)))
+			#current_path = os.getcwd()
+			#os.chdir(nextrout_path)
 
-		G_tree = quality_measure.relabeling(G_tree, G_pre_extracted) # preprocessing needed for the filtering input format
+			print('step 2: computing Gtree.')
 
-		with open(folder_path + '/G_tree.pkl', 'wb') as file:
-			pkl.dump(G_tree, file)
-
-		#STEP #3: filtering
-
-		
-
-		# computing the leaves
-		deg = nx.degree_centrality(G_tree)
-
-		N = len(G_tree.nodes)
-
-		for node in deg.keys():
-			deg[node] = round(deg[node] * (N - 1))
-
-		terminal_list = [node for node in G_tree.nodes() if deg[node] == 1]
-
-		print('step 3: computing Gfs.')
-		print('number of leaves:',len(terminal_list))
-
-
-		Gf = {}
-		sources = {}
-		i=0
-		max_=0
-		while i<N_runs and max_<max_tol:
-
-			rng = np.random.RandomState(seed=rseed[max_])
-
-			print('i=',i,'/',N_runs)
-			print('max_=',max_,'/',30)
-			
-
-			#getting a random index for the source
-
-			random_source = rng.choice(terminal_list)
-			print('chosen source:',random_source)
-			rs_index = terminal_list.index(random_source)
-
-			sources_rs = [terminal_list[entry] for entry in [rs_index]]
-			sinks_rs = [node for node in terminal_list if node not in sources_rs]
-			G_filtered = filtering.filtering_from_image(G_pre_extracted,
-			                                           sources= sources_rs,
-			                                           sinks = sinks_rs,
-													   beta_d = beta_d,
-													   color_dict = color_dict,
-													   partition_dict = partition_dict,
-													   weighting_method_simplification=weighting_method_simplification,
-													   folder_name = folder_path)
-
+			G_tree = filtering.filtering_from_image(G_pre_extracted,
+				                                           sources= terminal_list[0:1],
+				                                           sinks = terminal_list[1:],
+														   beta_d = beta_d,
+														   color_dict = color_dict,
+														   partition_dict = partition_dict,
+														   weighting_method_simplification=weighting_method_simplification,
+														   folder_name = folder_path)
 
 			
-			G_filtered = quality_measure.relabeling(G_filtered, G_pre_extracted)
-			print('     is Gtree a tree?', str(nx.is_tree(G_filtered)))
-			Gf[i] = G_filtered
-			sources[i]=random_source
-			i+=1
-			max_+=1
+			print('     is Gtree a tree?', str(nx.is_tree(G_tree)))
+
+			G_tree = quality_measure.relabeling(G_tree, G_pre_extracted) # preprocessing needed for the filtering input format
+
+			with open(folder_path + '/G_tree.pkl', 'wb') as file:
+				pkl.dump(G_tree, file)
+
+			#STEP #3: filtering
+
+			# computing the leaves
+			deg = nx.degree_centrality(G_tree)
+
+			N = len(G_tree.nodes)
+
+			for node in deg.keys():
+				deg[node] = round(deg[node] * (N - 1))
+
+			terminal_list = [node for node in G_tree.nodes() if deg[node] == 1]
+
+			print('step 3: computing Gfs.')
+			print('number of leaves:',len(terminal_list))
 
 
-		#os.chdir(current_path)
+			Gf = {}
+			sources = {}
+			i=0
+			max_=0
+			while i<N_runs and max_<max_tol:
 
-		pre_extraction.plt_graph_plots([G_tree],
+				rng = np.random.RandomState(seed=rseed[max_])
+
+				print('i=',i,'/',N_runs)
+				print('max_=',max_,'/',30)
+				
+
+				#getting a random index for the source
+
+				random_source = rng.choice(terminal_list)
+				print('chosen source:',random_source)
+				rs_index = terminal_list.index(random_source)
+
+				sources_rs = [terminal_list[entry] for entry in [rs_index]]
+				sinks_rs = [node for node in terminal_list if node not in sources_rs]
+				G_filtered = filtering.filtering_from_image(G_pre_extracted,
+				                                           sources= sources_rs,
+				                                           sinks = sinks_rs,
+														   beta_d = beta_d,
+														   color_dict = color_dict,
+														   partition_dict = partition_dict,
+														   weighting_method_simplification=weighting_method_simplification,
+														   folder_name = folder_path)
+
+
+				
+				G_filtered = quality_measure.relabeling(G_filtered, G_pre_extracted)
+				print('     is Gtree a tree?', str(nx.is_tree(G_filtered)))
+				Gf[i] = G_filtered
+				sources[i]=random_source
+				i+=1
+				max_+=1
+
+
+			#os.chdir(current_path)
+
+			if plotting: pre_extraction.plt_graph_plots([G_tree],
+											   partition_dict,
+											   color_dict,
+											   folder_path,
+											   '/G_tree.png',
+											   alpha=.6,
+											   width_list=[3],
+											   color_list=['black'])
+
+			# superimposing the filtrations
+
+			graph_list = list(Gf.values())
+
+			for i in range(len(graph_list)):
+
+				graph = graph_list[i]
+				random_source = sources[i]
+				print('------random source:'+str(random_source)+'----------: n_nodes:',len(graph.nodes()),', n_edges:',len(graph.edges()))
+
+
+				if plotting: pre_extraction.plt_graph_plots([graph],
+											   partition_dict,
+											   color_dict,
+											   folder_path,
+											   '/G_filtered' + str(random_source) + '.png',
+											   alpha=.6,
+											   width_list=[3],
+											   color_list=['black'])
+				with open(folder_path + '/G_filtered' + str(random_source) + '.pkl', 'wb') as file:
+					pkl.dump(graph, file)
+
+
+
+			G_filtered = superimposing_graphs(graph_list, G_pre_extracted, union_type)
+
+			#adding value property
+
+			#G_filtered = time_weights(G_filtered, beta_d)
+
+			weights = [G_filtered.edges[edge]['tdens'] for edge in G_filtered.edges()]
+
+			if plotting: pre_extraction.plt_graph_plots([G_filtered],
 										   partition_dict,
 										   color_dict,
 										   folder_path,
-										   '/G_tree.png',
-										   alpha=.6,
-										   width_list=[3],
-										   color_list=['black'])
+										   '/G_filtered.png',
+										   alpha=.5,
+										   width_list=[weights],
+										   color_list=['black'],
+										   highlighted_nodes = [ list(sources.values()) ])
+			with open(folder_path + '/G_filtered.pkl', 'wb') as file:
+				pkl.dump(G_filtered, file)
 
-		# superimposing the filtrations
+			#print(list(G_filtered.edges(data=True))[:10])
 
-		graph_list = list(Gf.values())
+			parameters = [image_path, N_runs, new_size, t2, number_of_colors, number_of_cc, graph_type, t1, beta_d, t3, N_runs, max_, weighting_method_simplification, ds_interpolation]
 
-		for i in range(len(graph_list)):
+			with open(folder_path + '/parameters.pkl', 'wb') as file:
+				pkl.dump(parameters, file)
+			#print(folder_path)
+			#os.system('cp -r '+folder_path+' ../../data/output/test/'+folder_path.split('/')[-1]+'/nextrout/')
+			try:
+			  os.system('rm -r '+ '../../data/output/test/'+folder_path.split('/')[-1]+'/nextrout/')
+			except:
+			  pass
 
-			graph = graph_list[i]
-			random_source = sources[i]
-			print('------random source:'+str(random_source)+'----------: n_nodes:',len(graph.nodes()),', n_edges:',len(graph.edges()))
+			#print(folder_path)
 
+			#move_files(folder_path,'../../data/output/test/'+folder_path.split('/')[-1]+'/nextrout/')
 
-			pre_extraction.plt_graph_plots([graph],
-										   partition_dict,
-										   color_dict,
-										   folder_path,
-										   '/G_filtered' + str(random_source) + '.png',
-										   alpha=.6,
-										   width_list=[3],
-										   color_list=['black'])
-			with open(folder_path + '/G_filtered' + str(random_source) + '.pkl', 'wb') as file:
-				pkl.dump(graph, file)
+			#os.system('cp -r '+folder_path + '  ' +folder_path+'nextrout_'+weighting_method_simplification)
 
+			#os.system('rm -r '+folder_path)
 
-
-		G_filtered = superimposing_graphs(graph_list, G_pre_extracted, union_type)
-
-		#adding value property
-
-		#G_filtered = time_weights(G_filtered, beta_d)
-
-		weights = [G_filtered.edges[edge]['tdens'] for edge in G_filtered.edges()]
-
-		pre_extraction.plt_graph_plots([G_filtered],
-									   partition_dict,
-									   color_dict,
-									   folder_path,
-									   '/G_filtered.png',
-									   alpha=.5,
-									   width_list=[weights],
-									   color_list=['black'],
-									   highlighted_nodes = [ list(sources.values()) ])
-		with open(folder_path + '/G_filtered.pkl', 'wb') as file:
-			pkl.dump(G_filtered, file)
-
-		#print(list(G_filtered.edges(data=True))[:10])
-
-		parameters = [image_path, N_runs, new_size, t2, number_of_colors, number_of_cc, graph_type, t1, beta_d, t3, N_runs, max_, weighting_method_simplification, ds_interpolation]
-
-		with open(folder_path + '/parameters.pkl', 'wb') as file:
-			pkl.dump(parameters, file)
-		#print(folder_path)
-		#os.system('cp -r '+folder_path+' ../../data/output/test/'+folder_path.split('/')[-1]+'/nextrout/')
-		try:
-		  os.system('rm -r '+ '../../data/output/test/'+folder_path.split('/')[-1]+'/nextrout/')
-		except:
-		  pass
-
-		#print(folder_path)
-
-		#move_files(folder_path,'../../data/output/test/'+folder_path.split('/')[-1]+'/nextrout/')
-
-		#os.system('cp -r '+folder_path + '  ' +folder_path+'nextrout_'+weighting_method_simplification)
-
-		#os.system('rm -r '+folder_path)
-
-		#print(G_filtered.edges(data=True))
+			#print(G_filtered.edges(data=True))
 		
 		return G_filtered
 
