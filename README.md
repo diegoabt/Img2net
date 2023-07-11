@@ -1,3 +1,5 @@
+[![CodeFactor](https://www.codefactor.io/repository/github/diegoabt/img2net/badge)](https://www.codefactor.io/repository/github/diegoabt/img2net)
+
 # Img2net: from images to networks
 
 Python implementation of the _img2net_ algorithm proposed in:
