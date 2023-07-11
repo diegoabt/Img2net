@@ -525,9 +525,9 @@ def resizing_image(image_path, number_of_colors, new_size,t=0,reversed_colors = 
 	saving_path = './runs/'+new_folder_name
 
 	try:
-		os.mkdir(saving_path)
-	except:
-		pass
+    		os.mkdir(saving_path)
+	except OSError as e:
+    		logger.error(e)
 	#print('resizing',os.getcwd(), image_path)
 	im = Image.open(image_path)
 	width, height, = im.size
