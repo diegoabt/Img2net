@@ -1,4 +1,5 @@
 networkx
+matplotlib > 3.7.1
 opencv-python
 scipy > 1.10.0
 numpy
