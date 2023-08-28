@@ -7,14 +7,18 @@ import pickle as pkl
 from scipy.spatial import ConvexHull, convex_hull_plot_2d
 from scipy.spatial import distance
 
-# Accesing root path
 import os
 
+# Accessing root path
 file_path = os.path.dirname(os.path.realpath(__file__))
-with open("/Users/dtheuerkauf/Nextrout/nextrout_location.txt") as f:
+print(file_path)
+root = os.path.abspath(os.path.join(file_path, "..", "..", "..","Nextrout"))
+
+# Now you can use the 'root' variable to construct the path to nextrout_location.txt
+nextrout_location_file = os.path.join(root, "nextrout_location.txt")
+
+with open(nextrout_location_file) as f:
     lines = f.readlines()
-root = lines[0]
-print('root',root)
 
 # Import I/O for timedata
 try:
