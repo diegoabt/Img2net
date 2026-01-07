@@ -29,8 +29,9 @@ except FileNotFoundError:
 
 # Import I/O for timedata
 try:
-    sys.path.append(root + "/../dmk/globals/python/timedata/")
-    import timedata as td
+    if root:
+        sys.path.append(root + "/../dmk/globals/python/timedata/")
+        import timedata as td
 except:
     print("Global repo non found")
 
