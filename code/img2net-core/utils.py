@@ -93,7 +93,7 @@ def completing_with_zeros(dict_weights_func, bar_pos):
     :return:
         dict_weights_func: dictionary.
     """
-    list_ = dict_weights_func.keys()
+    list_ = list(dict_weights_func.keys())
     # print(list_)
     for n in range(1, len(bar_pos.keys()) + 1):
         if n not in list_:

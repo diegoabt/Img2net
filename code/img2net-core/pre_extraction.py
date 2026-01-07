@@ -30,7 +30,7 @@ def prod_dict(File1, File2, weights1, weights2):
 
 	newDict = {}
 	newWeights = []
-	if File1.keys() != File2.keys():
+	if set(File1.keys()) != set(File2.keys()):
 		print("not the same keys!")
 	else:
 		i = 0
@@ -526,7 +526,7 @@ def resizing_image(image_path, number_of_colors, new_size,t=0,reversed_colors = 
 
 	try:
 		os.mkdir(saving_path)
-	except:
+	except OSError:
 		pass
 	#print('resizing',os.getcwd(), image_path)
 	im = Image.open(image_path)

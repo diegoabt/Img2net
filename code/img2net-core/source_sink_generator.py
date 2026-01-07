@@ -415,7 +415,7 @@ def source_sink_generator(folder_name, ndiv, flag_source, flag_sink):
         #Writing the source to a file
         print('Saving source into source.dat.')
         f= open(folder_name+"/input/source.dat","w+")
-        n_nodes=len(X_bar.nodes.keys())
+        n_nodes=len(list(X_bar.nodes()))
         print('number of nodes',n_nodes)
         f.write("1"+(7-len(str(n_nodes)))*" "+str(n_nodes)+"\n")
         f.write("time    0.0"+"\n")
@@ -435,7 +435,7 @@ def source_sink_generator(folder_name, ndiv, flag_source, flag_sink):
         #Writing the sink to a file
         print('Saving sink into sink.dat')
         f= open(folder_name+"/input/sink.dat","w+")
-        n_nodes=len(X_bar.nodes.keys())
+        n_nodes=len(list(X_bar.nodes()))
         f.write("1"+(7-len(str(n_nodes)))*" "+str(n_nodes)+"\n")
         f.write("time    0.0"+"\n")
         f.write(str(nnzero_sink)+"\n")

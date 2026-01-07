@@ -39,18 +39,18 @@ def superimposing_graphs(graph_list, G_aux, union_type = None):
 		avg_counter=0
 		weight_flag = False # this is used to access either one or two weights when adding the edges
 		for graph in graph_list:
-			try:# if no error, then the edge *is* in the graph
-				membership_test =graph.edges[edge]
-				try: 
-					w_tdens += graph.edges[edge[0], edge[1]]['tdens']
-					
-					avg_counter+=1
-				except:
-					w_tdens+= graph.edges[edge[0], edge[1]]['weight']
-					avg_counter+=1
-					weight_flag = True
-			except:
-				pass
+		try:# if no error, then the edge *is* in the graph
+			membership_test =graph.edges[edge]
+			try: 
+				w_tdens += graph.edges[edge[0], edge[1]]['tdens']
+				
+				avg_counter+=1
+			except KeyError:
+				w_tdens+= graph.edges[edge[0], edge[1]]['weight']
+				avg_counter+=1
+				weight_flag = True
+		except KeyError:
+			pass
 		if weight_flag:
 			unionG.edges[edge[0], edge[1]]['weight'] = w_tdens/avg_counter
 		else:	
@@ -276,7 +276,7 @@ def image2net(image_path, N_runs, t2, t3, new_size = 'automatic',union_type = No
 		#os.system('cp -r '+folder_path+' ../../data/output/test/'+folder_path.split('/')[-1]+'/nextrout/')
 		try:
 		  os.system('rm -r '+ '../../data/output/test/'+folder_path.split('/')[-1]+'/nextrout/')
-		except:
+		except OSError:
 		  pass
 
 		#print(folder_path)
@@ -294,7 +294,7 @@ def image2net(image_path, N_runs, t2, t3, new_size = 'automatic',union_type = No
 def move_files(folder_origin, folder_dest):
 	try:
 		os.system('mkdir '+folder_dest)
-	except:
+	except OSError:
 		pass
 	files = [folder_origin+'/'+f for f in os.listdir(folder_origin)]
 	for f in files: 

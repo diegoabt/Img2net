@@ -87,7 +87,7 @@ def relabeling(G_new,G_old):
     try:
         w = G_new.edges[test_edge]['tdens']
         weight_label = 'tdens'
-    except:
+    except KeyError:
         weight_label = 'weight'
 
     G_new_relabeled=nx.Graph()
@@ -212,7 +212,7 @@ def local_graph_weight_sum(G, list_of_coord, binary = False):
     try:
         w = G.edges[test_edge]['tdens']
         weight_label = 'tdens'
-    except:
+    except KeyError:
         weight_label = 'weight'
 
 

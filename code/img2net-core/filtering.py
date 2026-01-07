@@ -311,7 +311,7 @@ def filtering(
     if tdens0 != None:
         try:
             tdens0 = np.array([(Gpe_rel.edges[edge]["tdens"]) for edge in edges])
-        except:
+        except KeyError:
             tdens0 = np.array([(Gpe_rel.edges[edge]["flux"]) for edge in edges])
 
     # topol
@@ -427,7 +427,7 @@ def filtering(
                 edge[0], weight=Gpe_rel.nodes[edge[0]]["tdens"]
             )  # todo: this needs to be fixed once the flux is working again (BPweights)
             Gf.add_node(edge[1], weight=Gpe_rel.nodes[edge[1]]["tdens"])
-        except:
+        except KeyError:
             pass
 
     Gf.remove_nodes_from(list(nx.isolates(Gf)))
@@ -528,13 +528,13 @@ def filtering_from_image(small_G_filtered, sources, sinks, beta_d,  color_dict, 
     try:
         #print('Creating folder',folder_name.split('/')[-1])
         os.mkdir('../otp_utilities/muffe_sparse_optimization/simplifications/runs/'+folder_name.split('/')[-1])
-    except:
+    except OSError:
         pass
 
     try:
         #print('Creating folder',folder_name)
         os.mkdir(folder_name)
-    except:
+    except OSError:
         pass
 
     G_filtered,_,_,_ = filtering(
