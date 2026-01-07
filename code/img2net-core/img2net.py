@@ -39,18 +39,18 @@ def superimposing_graphs(graph_list, G_aux, union_type = None):
 		avg_counter=0
 		weight_flag = False # this is used to access either one or two weights when adding the edges
 		for graph in graph_list:
-		try:# if no error, then the edge *is* in the graph
-			membership_test =graph.edges[edge]
-			try: 
-				w_tdens += graph.edges[edge[0], edge[1]]['tdens']
-				
-				avg_counter+=1
+			try:# if no error, then the edge *is* in the graph
+				membership_test =graph.edges[edge]
+				try: 
+					w_tdens += graph.edges[edge[0], edge[1]]['tdens']
+					
+					avg_counter+=1
+				except KeyError:
+					w_tdens+= graph.edges[edge[0], edge[1]]['weight']
+					avg_counter+=1
+					weight_flag = True
 			except KeyError:
-				w_tdens+= graph.edges[edge[0], edge[1]]['weight']
-				avg_counter+=1
-				weight_flag = True
-		except KeyError:
-			pass
+				pass
 		if weight_flag:
 			unionG.edges[edge[0], edge[1]]['weight'] = w_tdens/avg_counter
 		else:	

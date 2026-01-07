@@ -11,10 +11,21 @@ from scipy.spatial import distance
 import os
 
 file_path = os.path.dirname(os.path.realpath(__file__))
-with open("/Users/dtheuerkauf/Nextrout/nextrout_location.txt") as f:
-    lines = f.readlines()
-root = lines[0]
-print('root',root)
+try:
+    with open("/Users/dtheuerkauf/Nextrout/nextrout_location.txt") as f:
+        lines = f.readlines()
+    root = lines[0]
+    print('root',root)
+except FileNotFoundError:
+    # Try alternative path from nextrout_path.txt if it exists
+    try:
+        nextrout_path_file = os.path.join(file_path, "nextrout_path.txt")
+        with open(nextrout_path_file) as f:
+            root = f.readline().strip()
+        print('root',root)
+    except FileNotFoundError:
+        print("Warning: Nextrout not found. Please configure Nextrout path.")
+        root = None
 
 # Import I/O for timedata
 try:
@@ -24,36 +35,54 @@ except:
     print("Global repo non found")
 
 # Import geometry tools
-sys.path.append(root + "/../dmk/geometry/python/")
-import meshtools as mt
+try:
+    if root:
+        sys.path.append(root + "/../dmk/geometry/python/")
+        import meshtools as mt
 
-sys.path.append(root + "/../dmk/dmk_solver/otp_solver/preprocess/assembly/")
-import example_grid
+        sys.path.append(root + "/../dmk/dmk_solver/otp_solver/preprocess/assembly/")
+        import example_grid
 
-# Import dmk tools
-sys.path.append(root + "/../dmk/dmk_solver/otp_solver/python/")
-import dmk_p1p0
+        # Import dmk tools
+        sys.path.append(root + "/../dmk/dmk_solver/otp_solver/python/")
+        import dmk_p1p0
 
-sys.path.append(
-    root + "/../dmk/dmk_solver/build/python/fortran_python_interface/"
-)
-from dmk import (
-    Dmkcontrols,  # controls for dmk simulations)
-    Timefunctionals,  # information of time/algorithm evolution
-    Dmkinputsdata,  # structure variable containg inputs data
-    build_subgrid_rhs,  # procedure to preprocess forcing term f
-    Tdenspotentialsystem,  # input/output result tdens, pot
-    dmkp1p0_steady_data,  # main interface subroutine
-)
+        sys.path.append(
+            root + "/../dmk/dmk_solver/build/python/fortran_python_interface/"
+        )
+        from dmk import (
+            Dmkcontrols,  # controls for dmk simulations)
+            Timefunctionals,  # information of time/algorithm evolution
+            Dmkinputsdata,  # structure variable containg inputs data
+            build_subgrid_rhs,  # procedure to preprocess forcing term f
+            Tdenspotentialsystem,  # input/output result tdens, pot
+            dmkp1p0_steady_data,  # main interface subroutine
+        )
+
+        sys.path.append(root + "/../dmk/dmk_solver/graph_otp_solver/python")
+        import dmk_graph
+    else:
+        raise ImportError("Nextrout not configured")
+except (ImportError, AttributeError, FileNotFoundError) as e:
+    print(f"Warning: Nextrout dependencies not available: {e}")
+    print("Some filtering functions may not work without Nextrout configured.")
+    # Set dummy values to allow module import
+    mt = None
+    example_grid = None
+    dmk_p1p0 = None
+    Dmkcontrols = None
+    Timefunctionals = None
+    Dmkinputsdata = None
+    build_subgrid_rhs = None
+    Tdenspotentialsystem = None
+    dmkp1p0_steady_data = None
+    dmk_graph = None
 
 # Import plot tools
 import matplotlib.pyplot as plt
 import matplotlib.tri as mtri
 from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
-
-sys.path.append(root + "/../dmk/dmk_solver/graph_otp_solver/python")
-import dmk_graph
 
 
 def concatenate(lists):

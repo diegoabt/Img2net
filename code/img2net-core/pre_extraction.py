@@ -450,7 +450,7 @@ def coloring(pixel_val, N):
 	:param pixel_val: normalized real value of the pixel.
 	:param N: number of colors.
 	:return:
-		color: integer \in \{0,1,...,N-1\}.
+		color: integer in {0,1,...,N-1}.
 
 	'''
 	intervals = np.linspace(0, 1, N, endpoint=True)
